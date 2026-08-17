@@ -11,47 +11,47 @@ A fast, AI-powered CLI agent built with **Google ADK (Agent Development Kit)** t
 
 ```mermaid
 flowchart TD
-    User([User CLI / Natural Language Prompt]) --> ADK[Google ADK Agent & Runner\nuv run looker-builder]
+    User(["User CLI / Natural Language Prompt"]) --> ADK["Google ADK Agent & Runner<br/>uv run looker-builder"]
     
     subgraph Looker CLI & Auth
-        Config[Profile Config\n~/.config/looker-cli/config.yaml\nAuto-Refresh & Multi-Source Auth]
+        Config["Profile Config<br/>~/.config/looker-cli/config.yaml<br/>Auto-Refresh & Multi-Source Auth"]
     end
     
     subgraph Looker Managed MCP
-        MCP[Looker Managed MCP Server\nhttps://instance/mcp\nJSON-RPC over HTTP]
-        Schema[Explore Metadata\nDimensions, Measures, Filters]
-        QueryEngine[Looker Query Engine\nMCP query Tool]
+        MCP["Looker Managed MCP Server<br/>https://instance/mcp<br/>JSON-RPC over HTTP"]
+        Schema["Explore Metadata<br/>Dimensions, Measures, Filters"]
+        QueryEngine["Looker Query Engine<br/>MCP query Tool"]
     end
     
     subgraph Grounded LLM Generator
-        Skills[LookML Dashboard Skills\nPackaged Resources\n24-col grid, KPIs, Cartesian, Tables]
-        Gemini[Gemini AI Generator\ngemini-2.5-flash via Vertex AI]
+        Skills["LookML Dashboard Skills<br/>Packaged Resources<br/>24-col grid, KPIs, Cartesian, Tables"]
+        Gemini["Gemini AI Generator<br/>gemini-2.5-flash via Vertex AI"]
     end
     
     subgraph Pre-Import Verification Loop
-        Verifier[Dashboard Verifier\nExecutes Element Queries]
-        Remediation{All Queries\nPass?}
+        Verifier["Dashboard Verifier<br/>Executes Element Queries"]
+        Remediation{"All Queries Pass?"}
     end
     
     subgraph Looker API
-        ImportAPI[Looker API 4.0\nimport_dashboard_from_lookml\nPOST /api/4.0/dashboards/lookml]
-        Dashboard[Live Looker Dashboard\nInteractive UDD]
+        ImportAPI["Looker API 4.0<br/>import_dashboard_from_lookml<br/>POST /api/4.0/dashboards/lookml"]
+        Dashboard["Live Looker Dashboard<br/>Interactive UDD"]
     end
     
     ADK --> Config
-    Config -->|OAuth Bearer Token| MCP
+    Config -->|"OAuth Bearer Token"| MCP
     MCP --> Schema
     Schema --> Gemini
-    Skills -->|Dashboard Design Specifications| Gemini
+    Skills -->|"Dashboard Design Specifications"| Gemini
     User --> Gemini
-    Gemini -->|Candidate LookML YAML| Verifier
-    Verifier -->|Test Queries (limit=1)| QueryEngine
+    Gemini -->|"Candidate LookML YAML"| Verifier
+    Verifier -->|"Test Queries (limit 1)"| QueryEngine
     QueryEngine --> Verifier
     Verifier --> Remediation
-    Remediation -->|❌ Query Error| Gemini
-    Remediation -->|✅ All Pass| ImportAPI
-    Config -->|OAuth Bearer Token| ImportAPI
-    ImportAPI -->|In-Place Updates / Creation| Dashboard
+    Remediation -->|"Query Error"| Gemini
+    Remediation -->|"All Pass"| ImportAPI
+    Config -->|"OAuth Bearer Token"| ImportAPI
+    ImportAPI -->|"In-Place Updates / Creation"| Dashboard
 ```
 
 ---
