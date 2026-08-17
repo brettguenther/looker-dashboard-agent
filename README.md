@@ -143,33 +143,42 @@ uv run looker-builder generate \
 uv run looker-builder generate "Executive Overview" --llm-model gemini-2.5-pro
 ```
 
-### 4. Side-by-Side Model Comparison (`compare`)
+### 4. Autonomous Open-Ended Discovery (`adk`)
+```bash
+uv run looker-builder adk \
+  "Discover what ecommerce models exist, find the explore for order items, inspect fields, generate an Executive Summary Dashboard, verify queries live, and import it into Looker!" \
+  --llm-model gemini-2.5-flash
+```
+Leverages Google ADK (`google.adk`)'s autonomous planning and tool orchestration to automatically discover available semantic models, inspect relevant explore schemas, synthesize LookML, verify query tiles against Looker, and deploy the live dashboard.
+
+### 5. Side-by-Side Model Comparison (`compare`)
 ```bash
 uv run looker-builder compare \
-  "Executive Demographics & Order Breakdown with KPI cards, monthly revenue trend line chart, and state breakdown column chart" \
+  "Executive Demographics & Order Breakdown with KPI cards, monthly revenue trend line chart, top brands column chart, and department performance table" \
   --model1 gemini-3.6-flash \
-  --model2 gemini-2.5-pro \
+  --model2 claude-opus-5 \
   --model <MODEL_NAME> \
   --explore <EXPLORE_NAME>
 ```
-Generates dashboards with both models, verifies all tile queries, imports both dashboards into Looker, and prints a comparative matrix (tile count, verification pass rate, query latency).
+Generates dashboards with both models (e.g. **Gemini 3.6 Flash** vs **Claude Opus 5** via Vertex AI), verifies all tile queries live against Looker, imports both dashboards, and prints a comparative benchmark matrix (tile count, verification pass rate, query latency).
 
-### 5. Edit & Update an Existing Dashboard In-Place
+### 6. Edit & Update an Existing Dashboard In-Place
 ```bash
 uv run looker-builder edit <SLUG> \
   "Add a user count KPI tile and a monthly revenue trend line chart with product category breakdown" \
   --model <MODEL_NAME> \
-  --explore <EXPLORE_NAME>
+  --explore <EXPLORE_NAME> \
+  --llm-model claude-opus-5
 ```
 Overwrites the existing dashboard in-place at the exact same URL without generating duplicate dashboards!
 
-### 6. Verify LookML Query Elements from a Local File
+### 7. Verify LookML Query Elements from a Local File
 ```bash
 uv run looker-builder verify my_dashboard.yml
 ```
 Tests all query tiles in an existing LookML dashboard YAML file against Looker MCP and reports pass/fail status per element.
 
-### 7. Interactive Creation & Refinement Wizard
+### 8. Interactive Creation & Refinement Wizard
 ```bash
 uv run looker-builder interactive
 ```
