@@ -175,9 +175,45 @@ Apply the requested modifications to the dashboard. Preserve the newspaper layou
         return yaml_content
 
     def _call_model(self, model_name: str, user_content: str) -> str:
-        """Route generation call dynamically to Gemini or Claude."""
+        """Route generation call dynamically to Gemini or Claude (Vertex AI / Direct)."""
         if model_name.startswith("claude"):
-            # Anthropic Claude model
+            # 1. Try Vertex AI global/regional rawPredict
+            try:
+                import google.auth
+                from google.auth.transport.requests import Request
+                import requests
+
+                creds, project = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+                creds.refresh(Request())
+                project_id = self.project_id or project or "stellar-cumulus-449523-b8"
+                location = os.environ.get("ANTHROPIC_VERTEX_REGION", "global")
+                
+                if location == "global":
+                    url = f"https://aiplatform.googleapis.com/v1/projects/{project_id}/locations/global/publishers/anthropic/models/{model_name}:rawPredict"
+                else:
+                    url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/anthropic/models/{model_name}:rawPredict"
+
+                headers = {
+                    "Authorization": f"Bearer {creds.token}",
+                    "Content-Type": "application/json; charset=utf-8",
+                }
+                payload = {
+                    "anthropic_version": "vertex-2023-10-16",
+                    "system": self._system_prompt,
+                    "messages": [{"role": "user", "content": user_content}],
+                    "max_tokens": 8192,
+                    "thinking": {"type": "disabled"},
+                }
+                resp = requests.post(url, headers=headers, json=payload, timeout=120)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    text_parts = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
+                    if text_parts:
+                        return "".join(text_parts)
+            except Exception:
+                pass
+
+            # 2. Fallback to Anthropic SDK / AnthropicVertex
             anthropic_client = self._get_anthropic_client()
             resp = anthropic_client.messages.create(
                 model=model_name,
@@ -204,10 +240,20 @@ Apply the requested modifications to the dashboard. Preserve the newspaper layou
 
     def _extract_yaml(self, text: str) -> str:
         """Extract YAML block from LLM response."""
-        match = re.search(r"```(?:yaml|lookml)?\s*\n(.*?)\n```", text, re.DOTALL)
+        match = re.search(r"```(?:yaml|lookml)?\s*\n?(.*?)\n?```", text, re.DOTALL)
         if match:
             return match.group(1).strip()
-        return text.strip()
+
+        cleaned = text.strip()
+        if cleaned.startswith("```yaml"):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith("```lookml"):
+            cleaned = cleaned[9:]
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        return cleaned.strip()
 
     def _validate_yaml(self, yaml_str: str) -> None:
         """Validate YAML syntax and structure."""
