@@ -25,21 +25,24 @@ class ImportedDashboardResult:
     raw_response: Dict[str, Any]
 
 
-def inject_preferred_slug(lookml_yaml: str, preferred_slug: Optional[str]) -> str:
-    """Ensure preferred_slug is present in the LookML YAML definition."""
-    if not preferred_slug:
-        return lookml_yaml
-
+def sanitize_lookml_yaml(lookml_yaml: str, preferred_slug: Optional[str] = None) -> str:
+    """Sanitize LookML YAML, removing invalid top-level slug fields and ensuring valid preferred_slug."""
     try:
         data = yaml.safe_load(lookml_yaml)
         if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
-            data[0]["preferred_slug"] = str(preferred_slug)
+            # Remove invalid top-level 'slug' which causes API 422
+            data[0].pop("slug", None)
+            if preferred_slug and re.match(r"^[A-Za-z0-9]{15,30}$", preferred_slug):
+                data[0]["preferred_slug"] = str(preferred_slug)
+            elif "preferred_slug" in data[0] and not re.match(r"^[A-Za-z0-9]{15,30}$", str(data[0]["preferred_slug"])):
+                data[0].pop("preferred_slug", None)
             return yaml.dump(data, sort_keys=False)
     except Exception:
         pass
 
-    # Regex fallback injection after "- dashboard:"
-    if "preferred_slug:" not in lookml_yaml:
+    # Regex cleanup fallback
+    lookml_yaml = re.sub(r"\n\s+slug:\s*[^\n]+", "", lookml_yaml)
+    if preferred_slug and re.match(r"^[A-Za-z0-9]{15,30}$", preferred_slug) and "preferred_slug:" not in lookml_yaml:
         lookml_yaml = re.sub(
             r"(-\s*dashboard:\s*[^\n]+)",
             rf'\1\n  preferred_slug: "{preferred_slug}"',
@@ -47,6 +50,10 @@ def inject_preferred_slug(lookml_yaml: str, preferred_slug: Optional[str]) -> st
             count=1,
         )
     return lookml_yaml
+
+
+def inject_preferred_slug(lookml_yaml: str, preferred_slug: Optional[str]) -> str:
+    return sanitize_lookml_yaml(lookml_yaml, preferred_slug)
 
 
 class LookerDashboardImporter:

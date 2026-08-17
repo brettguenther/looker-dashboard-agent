@@ -489,9 +489,42 @@ def interactive_cmd(
                 console.print(f"[bold red]Update failed:[/bold red] {e}")
 
 
+@app.command("adk")
+def adk_cmd(
+    goal: str = typer.Argument(..., help="Open-ended goal for the autonomous ADK agent"),
+    llm_model: str = typer.Option("gemini-2.5-flash", "--llm-model", "-L", help="Model for the ADK agent"),
+    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Looker CLI profile to use"),
+):
+    """Run an autonomous open-ended discovery & dashboard deployment goal using Google ADK."""
+    from looker_builder.adk_agent import ADKLookerDashboardAgent
+
+    console.print(Panel.fit(
+        f"[bold cyan]🤖 Google ADK Autonomous Agent[/bold cyan]\n"
+        f"• Goal: [white]{goal}[/white]\n"
+        f"• Model: [magenta]{llm_model}[/magenta]",
+        border_style="cyan"
+    ))
+
+    with console.status("[bold green]Running ADK autonomous planning and tool execution..."):
+        try:
+            adk_agent = ADKLookerDashboardAgent(profile_name=profile, model_name=llm_model)
+            events = adk_agent.run_goal(goal)
+        except Exception as e:
+            console.print(f"[bold red]ADK execution failed:[/bold red] {e}")
+            raise typer.Exit(1)
+
+    console.print(f"\n[bold green]✅ ADK Autonomous Goal Finished! Total events: {len(events)}[/bold green]")
+    for e in events:
+        if hasattr(e, "content") and e.content:
+            for part in getattr(e.content, "parts", []):
+                if hasattr(part, "text") and part.text:
+                    console.print(Panel(part.text, title="ADK Agent Output", border_style="green"))
+
+
 def main():
     app()
 
 
 if __name__ == "__main__":
     main()
+
