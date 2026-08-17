@@ -1,0 +1,52 @@
+# Python & Environment
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments & Tooling
+.venv/
+venv/
+ENV/
+.uv/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Local Agent & IDE Development Skills (packaged runtime resources are in looker_builder/resources/)
+.agents/
+skills-lock.json
+Notes.md
+.gemini/
+
+# Secrets, Tokens & Local Configs
+.env
+.env.*
+*.local
+mcp_oauth_tokens.json
+config.yaml
+
+# Logs & Temporary Files
+*.log
+*.tmp
