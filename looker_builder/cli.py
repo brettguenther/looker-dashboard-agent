@@ -1,4 +1,4 @@
-"""CLI Interface for Looker LookML Dashboard Builder Agent with Query Verification."""
+"""CLI Interface for Looker LookML Dashboard Builder Agent with Dynamic Model Selection and Comparison."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from looker_builder.importer import LookerDashboardImporter
 
 app = typer.Typer(
     name="looker-builder",
-    help="AI-powered Looker LookML Dashboard Builder CLI using Looker Managed MCP and Dashboard Import API.",
+    help="AI-powered Looker LookML Dashboard Builder CLI with Multi-Model Support (Gemini, Claude) and Query Verification.",
     add_completion=False,
 )
 console = Console()
@@ -161,16 +161,18 @@ def generate_cmd(
     explore: Optional[str] = typer.Option(None, "--explore", "-e", help="Target Explore"),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="Dashboard title"),
     preferred_slug: Optional[str] = typer.Option(None, "--preferred-slug", "-s", help="Preferred slug for in-place updates"),
+    llm_model: Optional[str] = typer.Option(None, "--llm-model", "-L", help="LLM model (e.g. gemini-3.6-flash, gemini-2.5-pro, claude-3-7-sonnet@20250219)"),
     folder_id: Optional[str] = typer.Option(None, "--folder-id", "-f", help="Folder ID to place dashboard in"),
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Looker CLI profile to use"),
     skip_verify: bool = typer.Option(False, "--skip-verify", help="Skip running test queries for each tile"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Generate and verify LookML without importing"),
     output_file: Optional[Path] = typer.Option(None, "--output", "-o", help="Save generated LookML to file"),
 ):
-    """Generate a LookML dashboard with AI, verify tile queries live against Looker, and import in-place."""
+    """Generate a LookML dashboard with AI (Gemini or Claude), verify tile queries live against Looker, and import in-place."""
     agent = LookerDashboardAgent(profile_name=profile)
+    active_llm = llm_model or "gemini-3.6-flash"
 
-    with console.status("[bold green]Discovering schema, generating LookML & verifying queries..."):
+    with console.status(f"[bold green]Discovering schema, generating LookML with {active_llm} & verifying queries..."):
         try:
             if not model:
                 models = agent.get_models()
@@ -185,6 +187,7 @@ def generate_cmd(
                 explore_metadata=metadata,
                 dashboard_title=title,
                 preferred_slug=preferred_slug,
+                model_name=active_llm,
             )
 
             # Verification Loop
@@ -203,7 +206,7 @@ def generate_cmd(
 
     print_verification_table(verification_report)
 
-    console.print(Panel(Syntax(lookml_yaml, "yaml", theme="monokai", line_numbers=True), title="[bold]Verified LookML Dashboard[/bold]"))
+    console.print(Panel(Syntax(lookml_yaml, "yaml", theme="monokai", line_numbers=True), title=f"[bold]Verified LookML Dashboard ({active_llm})[/bold]"))
 
     if output_file:
         output_file.write_text(lookml_yaml, encoding="utf-8")
@@ -223,6 +226,7 @@ def generate_cmd(
     success_table = Table(show_header=False, border_style="green")
     success_table.add_row("Dashboard ID", f"[bold cyan]{res.id}[/bold cyan]")
     success_table.add_row("Title", f"[bold white]{res.title}[/bold white]")
+    success_table.add_row("LLM Model", f"[magenta]{active_llm}[/magenta]")
     success_table.add_row("Slug", f"[yellow]{res.slug}[/yellow]")
     success_table.add_row("Folder", f"{res.folder_name or 'Personal'} (ID: {res.folder_id})")
     success_table.add_row("Live URL", f"[bold underline green]{res.url}[/bold underline green]")
@@ -237,19 +241,22 @@ def edit_cmd(
     instructions: str = typer.Argument(..., help="Edit instructions for modifying the dashboard"),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="Target LookML model"),
     explore: Optional[str] = typer.Option(None, "--explore", "-e", help="Target Explore"),
+    llm_model: Optional[str] = typer.Option(None, "--llm-model", "-L", help="LLM model to use"),
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Looker CLI profile to use"),
     skip_verify: bool = typer.Option(False, "--skip-verify", help="Skip running test queries"),
 ):
     """Edit an existing Looker dashboard in-place with query verification."""
     agent = LookerDashboardAgent(profile_name=profile)
+    active_llm = llm_model or "gemini-3.6-flash"
 
-    with console.status(f"[bold green]Generating & verifying in-place update for dashboard '{slug}'..."):
+    with console.status(f"[bold green]Generating & verifying in-place update with {active_llm} for dashboard '{slug}'..."):
         try:
             res = agent.edit_and_update_dashboard(
                 preferred_slug=slug,
                 edit_instructions=instructions,
                 model=model,
                 explore=explore,
+                llm_model=active_llm,
                 verify_queries=not skip_verify,
             )
         except Exception as e:
@@ -261,10 +268,88 @@ def edit_cmd(
     success_table = Table(show_header=False, border_style="green")
     success_table.add_row("Dashboard ID", f"[bold cyan]{res.dashboard_id}[/bold cyan]")
     success_table.add_row("Title", f"[bold white]{res.dashboard_title}[/bold white]")
+    success_table.add_row("LLM Model", f"[magenta]{active_llm}[/magenta]")
     success_table.add_row("Slug", f"[yellow]{res.dashboard_slug}[/yellow]")
     success_table.add_row("Live URL", f"[bold underline green]{res.dashboard_url}[/bold underline green]")
 
     console.print(Panel(success_table, title="[bold green]✅ Dashboard Verified & Updated In-Place![/bold green]", border_style="green"))
+
+
+@app.command("compare")
+def compare_cmd(
+    prompt: str = typer.Argument(..., help="Prompt to test on multiple LLM models"),
+    model1: str = typer.Option("gemini-3.6-flash", "--model1", help="First model name"),
+    model2: str = typer.Option("gemini-2.5-pro", "--model2", help="Second model name"),
+    looker_model: Optional[str] = typer.Option(None, "--model", "-m", help="Target LookML model"),
+    explore: Optional[str] = typer.Option(None, "--explore", "-e", help="Target Explore"),
+    profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Looker CLI profile to use"),
+):
+    """Generate, verify, and import dashboards from two different LLM models for side-by-side comparison."""
+    agent = LookerDashboardAgent(profile_name=profile)
+
+    if not looker_model:
+        models = agent.get_models()
+        looker_model = models[0]["name"] if models else "basic_ecomm"
+    if not explore:
+        explores = agent.get_explores(looker_model)
+        explore = explores[0]["name"] if explores else "basic_order_items"
+
+    console.print(Panel.fit(
+        f"[bold cyan]🔍 Model Comparison Run[/bold cyan]\n"
+        f"• Prompt: [white]{prompt}[/white]\n"
+        f"• Model 1: [magenta]{model1}[/magenta]\n"
+        f"• Model 2: [magenta]{model2}[/magenta]\n"
+        f"• Explore: [green]{looker_model}/{explore}[/green]",
+        border_style="cyan"
+    ))
+
+    # 1. Run Model 1
+    console.print(f"\n[bold green]🚀 Running Model 1 ({model1})...[/bold green]")
+    try:
+        res1 = agent.build_and_import_dashboard(
+            prompt=prompt,
+            model=looker_model,
+            explore=explore,
+            title=f"Comparison: {model1}",
+            llm_model=model1,
+        )
+        print_verification_table(res1.verification_report)
+        console.print(f"[green]Model 1 Dashboard ID: {res1.dashboard_id} | URL: {res1.dashboard_url}[/green]")
+    except Exception as e:
+        console.print(f"[bold red]Model 1 failed:[/bold red] {e}")
+        res1 = None
+
+    # 2. Run Model 2
+    console.print(f"\n[bold green]🚀 Running Model 2 ({model2})...[/bold green]")
+    try:
+        res2 = agent.build_and_import_dashboard(
+            prompt=prompt,
+            model=looker_model,
+            explore=explore,
+            title=f"Comparison: {model2}",
+            llm_model=model2,
+        )
+        print_verification_table(res2.verification_report)
+        console.print(f"[green]Model 2 Dashboard ID: {res2.dashboard_id} | URL: {res2.dashboard_url}[/green]")
+    except Exception as e:
+        console.print(f"[bold red]Model 2 failed:[/bold red] {e}")
+        res2 = None
+
+    # 3. Output Comparison Summary
+    summary_table = Table(title="📊 Side-by-Side Model Comparison Results", border_style="cyan")
+    summary_table.add_column("Metric", style="white bold")
+    summary_table.add_column(f"Model 1: {model1}", style="cyan")
+    summary_table.add_column(f"Model 2: {model2}", style="magenta")
+
+    if res1 and res2:
+        rep1 = res1.verification_report
+        rep2 = res2.verification_report
+        summary_table.add_row("Dashboard ID", str(res1.dashboard_id), str(res2.dashboard_id))
+        summary_table.add_row("Total Tiles", str(rep1.total_elements if rep1 else "-"), str(rep2.total_elements if rep2 else "-"))
+        summary_table.add_row("Query Elements Verified", f"{rep1.passed_elements}/{rep1.query_elements}" if rep1 else "-", f"{rep2.passed_elements}/{rep2.query_elements}" if rep2 else "-")
+        summary_table.add_row("Verification Rate", f"{(rep1.passed_elements/rep1.query_elements*100):.0f}%" if (rep1 and rep1.query_elements) else "-", f"{(rep2.passed_elements/rep2.query_elements*100):.0f}%" if (rep2 and rep2.query_elements) else "-")
+        summary_table.add_row("Live URL", res1.dashboard_url, res2.dashboard_url)
+        console.print(summary_table)
 
 
 @app.command("verify")
@@ -287,7 +372,7 @@ def interactive_cmd(
     profile: Optional[str] = typer.Option(None, "--profile", "-p", help="Looker CLI profile to use"),
 ):
     """Interactive wizard to design, verify, import, and iteratively refine Looker dashboards in-place."""
-    console.print(Panel.fit("[bold cyan]🚀 Looker LookML Dashboard Builder Agent[/bold cyan]\nInteractive Generation, Verification Loop & In-Place Refinement", border_style="cyan"))
+    console.print(Panel.fit("[bold cyan]🚀 Looker LookML Dashboard Builder Agent[/bold cyan]\nInteractive Generation, Multi-Model Selection & In-Place Refinement", border_style="cyan"))
 
     agent = LookerDashboardAgent(profile_name=profile)
 
@@ -335,16 +420,18 @@ def interactive_cmd(
 
     console.print(f"Found [green]{len(metadata.get('measures', []))} measures[/green] and [cyan]{len(metadata.get('dimensions', []))} dimensions[/cyan].")
 
-    # 4. User Prompt
-    dash_title = Prompt.ask("\nDashboard Title", default="Executive Overview")
+    # 4. LLM Selection & User Prompt
+    llm_choice = Prompt.ask("\nSelect LLM Model", default="gemini-3.6-flash")
+    dash_title = Prompt.ask("Dashboard Title", default="Executive Overview")
     user_prompt = Prompt.ask("Describe what you want on the dashboard (metrics, charts, breakdowns)", default="KPIs for main measures, monthly trend chart, category breakdown, and summary table")
 
     # 5. Generate & Verify
-    with console.status("[bold green]Generating LookML & executing live verification queries..."):
+    with console.status(f"[bold green]Generating LookML with {llm_choice} & executing live verification queries..."):
         lookml_yaml = agent.generator.generate(
             prompt=user_prompt,
             explore_metadata=metadata,
             dashboard_title=dash_title,
+            model_name=llm_choice,
         )
         lookml_yaml, report = agent.verifier.verify_and_remediate(
             lookml_yaml=lookml_yaml,
@@ -366,6 +453,7 @@ def interactive_cmd(
             f"[bold green]🎉 Dashboard Live in Looker![/bold green]\n\n"
             f"• [bold]ID:[/bold] {res.id}\n"
             f"• [bold]Title:[/bold] {res.title}\n"
+            f"• [bold]LLM:[/bold] {llm_choice}\n"
             f"• [bold]Slug:[/bold] [yellow]{res.slug}[/yellow]\n"
             f"• [bold]Folder:[/bold] {res.folder_name or 'Personal'} (ID: {res.folder_id})\n"
             f"• [bold]URL:[/bold] [bold underline green]{res.url}[/bold underline green]",
@@ -385,6 +473,7 @@ def interactive_cmd(
                     edit_instructions=edit_prompt,
                     model=selected_model,
                     explore=selected_explore,
+                    llm_model=llm_choice,
                     verify_queries=True,
                 )
                 print_verification_table(res.verification_report)

@@ -25,7 +25,7 @@ flowchart TD
     
     subgraph Grounded LLM Generator
         Skills["LookML Dashboard Skills<br/>Packaged Resources<br/>24-col grid, KPIs, Cartesian, Tables"]
-        Gemini["Gemini AI Generator<br/>gemini-2.5-flash via Vertex AI"]
+        Gemini["Multi-Model Generator<br/>Gemini 3.6 Flash / 2.5 Pro / Claude<br/>Vertex AI Location: global"]
     end
     
     subgraph Pre-Import Verification Loop
@@ -82,15 +82,14 @@ Before running the agent, ensure you have the following prerequisites configured
    - [`uv`](https://github.com/astral-sh/uv) (recommended) or `pip`.
 
 4. **Google Cloud / Vertex AI Credentials**:
-   - Active Application Default Credentials (ADC) for Gemini model access:
+   - Active Application Default Credentials (ADC) for Gemini / Vertex model access:
      ```bash
      gcloud auth application-default login
      ```
-   - Set your GCP project ID:
+   - Set your GCP project ID and region:
      ```bash
      export GOOGLE_CLOUD_PROJECT="your-gcp-project-id"
-     # or
-     export VERTEXAI_PROJECT="your-gcp-project-id"
+     export VERTEXAI_LOCATION="global"
      ```
 
 ---
@@ -130,21 +129,32 @@ uv run looker-builder explores <MODEL_NAME>
 uv run looker-builder fields <MODEL_NAME> <EXPLORE_NAME>
 ```
 
-### 3. Generate, Verify, and Import a New Dashboard
+### 3. Generate with Dynamic Model Selection (`--llm-model`)
 ```bash
+# Generate using Gemini 3.6 Flash
 uv run looker-builder generate \
   "Executive Performance Dashboard with KPIs for total revenue and orders, monthly trend line chart, and top categories breakdown" \
   --model <MODEL_NAME> \
   --explore <EXPLORE_NAME> \
+  --llm-model gemini-3.6-flash \
   --title "Executive Performance Dashboard"
-```
-The CLI automatically:
-1. Discovers explore schema from Looker MCP.
-2. Synthesizes LookML dashboard YAML using Gemini AI + packaged LookML Skills.
-3. **Executes live test queries** for every tile against Looker to verify correctness.
-4. Imports the verified dashboard directly into Looker.
 
-### 4. Edit & Update an Existing Dashboard In-Place
+# Or use Gemini 2.5 Pro / Claude
+uv run looker-builder generate "Executive Overview" --llm-model gemini-2.5-pro
+```
+
+### 4. Side-by-Side Model Comparison (`compare`)
+```bash
+uv run looker-builder compare \
+  "Executive Demographics & Order Breakdown with KPI cards, monthly revenue trend line chart, and state breakdown column chart" \
+  --model1 gemini-3.6-flash \
+  --model2 gemini-2.5-pro \
+  --model <MODEL_NAME> \
+  --explore <EXPLORE_NAME>
+```
+Generates dashboards with both models, verifies all tile queries, imports both dashboards into Looker, and prints a comparative matrix (tile count, verification pass rate, query latency).
+
+### 5. Edit & Update an Existing Dashboard In-Place
 ```bash
 uv run looker-builder edit <SLUG> \
   "Add a user count KPI tile and a monthly revenue trend line chart with product category breakdown" \
@@ -153,50 +163,38 @@ uv run looker-builder edit <SLUG> \
 ```
 Overwrites the existing dashboard in-place at the exact same URL without generating duplicate dashboards!
 
-### 5. Verify LookML Query Elements from a Local File
+### 6. Verify LookML Query Elements from a Local File
 ```bash
 uv run looker-builder verify my_dashboard.yml
 ```
 Tests all query tiles in an existing LookML dashboard YAML file against Looker MCP and reports pass/fail status per element.
 
-### 6. Interactive Creation & Refinement Wizard
+### 7. Interactive Creation & Refinement Wizard
 ```bash
 uv run looker-builder interactive
 ```
-Step-by-step interactive CLI:
-1. Select a LookML model and explore interactively.
-2. Review available dimensions and measures.
-3. Input prompt and title to generate LookML.
-4. Runs live element query verification.
-5. Deploy directly to Looker.
-6. **Iterative Refinement Loop**: Prompt for adjustments and update the dashboard in-place in real-time.
 
 ---
 
 ## 🔑 Key Architectural Capabilities
 
-1. **Google ADK Agent Control Flow**:
+1. **Multi-Model Dynamic Support**:
+   - Supports any Vertex AI model (`gemini-3.6-flash`, `gemini-2.5-pro`, `gemini-2.5-flash`) via `VERTEXAI_LOCATION=global`.
+   - Supports Anthropic Claude models via Vertex AI Model Garden (`AnthropicVertex`) or direct Anthropic API.
+
+2. **Google ADK Agent Control Flow**:
    - Orchestrated via **Google ADK (`google.adk`)**, wrapping Looker MCP discovery, generation, query verification, and dashboard import as composable ADK tools (`FunctionTool`).
    - Manages state machine transitions: `Discovery -> Grounded Generation -> Live Verification -> Remediation -> Deployment`.
 
-2. **Pre-Import Query Verification Loop**:
+3. **Pre-Import Query Verification Loop**:
    - Before deploying a dashboard to Looker, the agent parses every query-bearing tile (KPIs, charts, data tables) and executes test queries against the **Looker Query Engine** via the Looker MCP `query` tool.
-   - If any query fails (e.g. invalid field, incompatible dimension/measure, bad filter syntax), the agent captures the exact Looker API error message and automatically triggers self-healing remediation with Gemini AI before finalizing.
+   - If any query fails, the agent captures the exact Looker API error message and automatically triggers self-healing remediation before finalizing.
 
-3. **In-Place Updates via `preferred_slug`**:
+4. **In-Place Updates via `preferred_slug`**:
    - Uses Looker's `preferred_slug` capability so you can iteratively refine live dashboards without spawning duplicate dashboard objects in Looker.
-   - Preserves dashboard ID, slug, and live URL across edits.
 
-4. **Self-Contained Packaged LookML Dashboard Skills**:
-   - Bundles all **15 markdown specification guides** inside `looker_builder/resources/skills/lookml-dashboards/` for standalone distribution:
-     - **Layout**: 24-column `newspaper` grid and sectioning.
-     - **KPI Cards**: `single_value` comparisons and Period-over-Period (PoP) table calculations.
-     - **Visualizations**: Cartesian (`looker_line`, `looker_column`, `looker_bar`, `looker_area`), `looker_grid` tables, conditional formatting, cell visualizations, and custom HTML headers.
-     - **Interactivity**: Cross-filtering (`crossfilter_enabled: true`) and global dashboard filters mapped to tile listeners (`listen:`).
-
-5. **Direct LookML Dashboard Import (`import_dashboard_from_lookml`)**:
-   - Calls Looker API 4.0 `POST /api/4.0/dashboards/lookml` (with fallback to `looker-cli api dashboard import_dashboard_from_lookml -`).
-   - Creates or updates a user-defined dashboard in the caller's personal space (or specified `folder_id`) and returns the live interactive URL.
+5. **Self-Contained Packaged LookML Dashboard Skills**:
+   - Bundles all **15 markdown specification guides** inside `looker_builder/resources/skills/lookml-dashboards/` for standalone distribution.
 
 ---
 
@@ -213,7 +211,7 @@ looker-dashboard-agent/
 │   ├── config.py               # Multi-source token discovery & auto-refresh
 │   ├── mcp_client.py           # Looker Managed MCP HTTP JSON-RPC client
 │   ├── skills_loader.py        # Compiles skills into full prompt knowledge base
-│   ├── generator.py            # Gemini AI LookML generator grounded in skills
+│   ├── generator.py            # Multi-model LLM generator (Gemini / Claude)
 │   ├── verifier.py             # Pre-import element query verification loop
 │   ├── adk_agent.py            # Google ADK agent and tool control flow
 │   ├── importer.py             # In-place dashboard importer with preferred_slug

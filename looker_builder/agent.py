@@ -78,6 +78,7 @@ class LookerDashboardAgent:
         title: Optional[str] = None,
         folder_id: Optional[str] = None,
         preferred_slug: Optional[str] = None,
+        llm_model: Optional[str] = None,
         verify_queries: bool = True,
         use_llm: bool = True,
     ) -> BuildDashboardResult:
@@ -105,6 +106,7 @@ class LookerDashboardAgent:
                 explore_metadata=metadata,
                 dashboard_title=title,
                 preferred_slug=preferred_slug,
+                model_name=llm_model,
             )
         else:
             lookml_yaml = self.generator.generate_template(
@@ -150,6 +152,7 @@ class LookerDashboardAgent:
         current_lookml: Optional[str] = None,
         model: Optional[str] = None,
         explore: Optional[str] = None,
+        llm_model: Optional[str] = None,
         verify_queries: bool = True,
     ) -> BuildDashboardResult:
         """Edit an existing Looker dashboard in-place, verify queries, and update Looker."""
@@ -168,6 +171,7 @@ class LookerDashboardAgent:
                 prompt=edit_instructions,
                 explore_metadata=metadata,
                 preferred_slug=preferred_slug,
+                model_name=llm_model,
             )
         else:
             lookml_yaml = self.generator.generate_edit(
@@ -175,6 +179,7 @@ class LookerDashboardAgent:
                 edit_instructions=edit_instructions,
                 explore_metadata=metadata,
                 preferred_slug=preferred_slug,
+                model_name=llm_model,
             )
 
         verification_report = None
